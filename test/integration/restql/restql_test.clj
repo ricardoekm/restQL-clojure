@@ -2,10 +2,8 @@
   (:require [clojure.test :refer :all]
             [restql.parser.core :as parser]
             [restql.core.api.restql :as restql]
-            [byte-streams :as bs]
             [restql.parser.json :as json]
             [stub-http.core :refer :all]
-            [clojure.core.async :refer :all]
             [restql.test-util :refer [route-response route-request route-header]]))
 
 (defn get-stub-body [request]
@@ -573,12 +571,11 @@
                     (fn [_] (throw (Exception. "exceptional")))]
         (is (= "exception"
                (->
-                (restql/execute-query-channel :mappings {:hero (str uri "/hero")}
-                                              :encoders {}
-                                              :query (restql.parser.core/parse-query "from hero" :context {})
-                                              :query-opts {})
-                (second)
-                (clojure.core.async/<!!)
+                (restql/execute-query-future :mappings {:hero (str uri "/hero")}
+                                             :encoders {}
+                                             :query (restql.parser.core/parse-query "from hero" :context {})
+                                             :query-opts {})
+                (deref)
                 :type))))))
 
   (testing "If an exception occurs returns it"
@@ -611,12 +608,11 @@
                     (fn [_] (do (swap! counter inc) (throw (Exception. "exceptional"))))]
         (do
           (->>
-           (restql/execute-query-channel :mappings mappings
-                                         :encoders encoders
-                                         :query query
-                                         :query-opts {})
-           (second)
-           (<!!))
+           (restql/execute-query-future :mappings mappings
+                                        :encoders encoders
+                                        :query query
+                                        :query-opts {})
+           (deref))
           (is (> 2 @counter)))))))
 
 (deftest request-with-param-with-brackets

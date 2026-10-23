@@ -2,7 +2,6 @@
   (:require [clojure.test :refer :all]
             [restql.parser.core :as parser]
             [restql.core.api.restql :as restql]
-            [byte-streams :as bs]
             [restql.parser.json :as json]
             [stub-http.core :refer :all]))
 

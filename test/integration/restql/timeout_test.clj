@@ -1,7 +1,6 @@
 (ns restql.timeout-test
   (:require [clojure.test :refer :all]
             [stub-http.core :refer :all]
-            [clojure.core.async :refer :all]
             [restql.core.api.restql :as restql]
             [restql.test-util :refer [route-response route-request route-header]]))
 
@@ -21,8 +20,8 @@
 
 (deftest shouldnt-throw-exeption-if-chainned-resource-timeout-and-ignore-error
   (with-routes!
-    {"/hero" (hero-route)}
-    {"/sidekick" (assoc (sidekick-route) :delay 200)}
+    {"/hero" (hero-route)
+     "/sidekick" (assoc (sidekick-route) :delay 200)}
     (let [result (restql/execute-query :mappings {:hero (str uri "/hero")
                                                   :sidekick (str uri "/sidekick")}
                                        :query "from hero\nfrom sidekick timeout 100 with id = hero.sidekickId ignore-errors")]
@@ -37,12 +36,11 @@
       {"/hero" (hero-route)}
       (is (= {:error :timeout}
              (->
-              (restql/execute-query-channel :mappings {:hero (str uri "/hero")}
-                                            :encoders {}
-                                            :query (restql.parser.core/parse-query "from hero" :context {})
-                                            :query-opts {:global-timeout 1})
-              (first)
-              (clojure.core.async/<!!)))))))
+              (restql/execute-query-future :mappings {:hero (str uri "/hero")}
+                                           :encoders {}
+                                           :query (restql.parser.core/parse-query "from hero" :context {})
+                                           :query-opts {:global-timeout 1})
+              (deref)))))))
 
 (deftest stop-waiting-requests
   (testing "If a global timeout occurs."
@@ -52,12 +50,11 @@
                     (fn [p1 p2 p3] (do (swap! counter inc) (do-request p1 p2 p3)))]
         (do
           (->>
-           (restql/execute-query-channel :mappings {:hero "http://0.0.0.0/hero" :sidekick "http://0.0.0.0/sidekick"}
-                                         :encoders {}
-                                         :query (restql.parser.core/parse-query "from hero \n from sidekick with id = hero.sidekickId")
-                                         :query-opts {:global-timeout 1})
-           (first)
-           (<!!))
+           (restql/execute-query-future :mappings {:hero "http://0.0.0.0/hero" :sidekick "http://0.0.0.0/sidekick"}
+                                        :encoders {}
+                                        :query (restql.parser.core/parse-query "from hero \n from sidekick with id = hero.sidekickId")
+                                        :query-opts {:global-timeout 1})
+           (deref))
           (is (> 2 @counter))))))
 
     (testing "If a global timeout occurs."
@@ -67,9 +64,8 @@
                       (fn [p1 p2 p3] (do (swap! counter2 inc) (do-request p1 p2 p3)))]
           (do
             (->>
-             (restql/execute-query-channel :mappings {:hero "http://0.0.0.0/hero" :sidekick "http://0.0.0.0/sidekick"}
-                                           :encoders {}
-                                           :query (restql.parser.core/parse-query "use timeout = 1 \n from hero \n from sidekick with id = hero.sidekickId"))
-             (first)
-             (<!!))
+             (restql/execute-query-future :mappings {:hero "http://0.0.0.0/hero" :sidekick "http://0.0.0.0/sidekick"}
+                                          :encoders {}
+                                          :query (restql.parser.core/parse-query "use timeout = 1 \n from hero \n from sidekick with id = hero.sidekickId"))
+             (deref))
             (is (> 2 @counter2)))))))

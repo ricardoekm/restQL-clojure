@@ -1,8 +1,7 @@
 (ns restql.core.runner.core-test
-  (:require [clojure.core.async :refer [<!! >! chan timeout go close!]]
-            [clojure.core.async.impl.protocols :refer [closed?] :rename {closed? chan-closed?}]
-            [clojure.test :refer [deftest is testing]]
-            [restql.core.runner.core :as core]))
+  (:require [clojure.test :refer [deftest is testing]]
+            [restql.core.runner.core :as core])
+  (:import [java.util.concurrent LinkedBlockingQueue]))
 
 (def is-done? #'core/is-done?)
 (def can-request? #'core/can-request?)
@@ -50,41 +49,44 @@
                                       [:address  {:with {:customer [:customer :id]}}]
                                       [:article  {:with {:id "123"}}]]}))))
 
+(def do-run #'core/do-run)
+
+(defn- far-deadline [] (+ (System/currentTimeMillis) 10000))
+
 (deftest do-run-test
-  (testing "Set result in output-ch and close all channels"
-    (let [chans {:request-ch (chan)
-                 :result-ch (go "some-result")
-                 :output-ch (chan)
-                 :exception-ch (chan)
-                 :timeout-ch (chan)}]
-      (with-redefs [core/all-that-can-request (fn [_] {:hero {:from :hero, :method :get}})
-                    core/update-state (fn [_ _] {:done "Done"})
-                    core/all-done? (fn [_] true)]
-        (#'restql.core.runner.core/do-run nil chans)
-        (is (= "Done" (<!! (:output-ch chans))))
-        (is (every? chan-closed? (map #(% chans) [:request-ch :result-ch :output-ch]))))))
+  (testing "Dispatch requests and return done results when all queries are done"
+    (let [results    (LinkedBlockingQueue.)
+          dispatched (atom [])
+          query      [[:hero {:from :hero :method :get}]
+                      [:sidekick {:from :sidekick :method :get :with {:id [:hero :id]}}]]
+          dispatch!  (fn [{:keys [to-do]}]
+                       (swap! dispatched conj (first to-do))
+                       (.put results [(first to-do) {:status 200}]))]
+      (is (= [[:hero {:status 200}] [:sidekick {:status 200}]]
+             (do-run query results (far-deadline) dispatch!)))
+      (is (= [:hero :sidekick] @dispatched))))
 
-  (testing "If exception-ch closes stop recur and close all remaining channels"
-    (let [chans {:request-ch (chan)
-                 :result-ch (go "some-result")
-                 :output-ch (chan)
-                 :exception-ch (chan)
-                 :timeout-ch (chan)}]
-      (with-redefs [core/all-that-can-request (fn [_] {:hero {:from :hero, :method :get}})
-                    core/update-state (fn [_ _] nil)
-                    core/all-done? (fn [_] false)]
-        (close! (:exception-ch chans))
-        (<!! (#'restql.core.runner.core/do-run nil chans))
-        (is (every? chan-closed? (map #(% chans) [:request-ch :result-ch :output-ch :exception-ch]))))))
+  (testing "Return done results when there is nothing to request"
+    (is (= [] (do-run [] (LinkedBlockingQueue.) (far-deadline) (fn [_])))))
 
-  (testing "If timeout-ch closes stop recur and close all remaining channels."
-    (let [chans {:request-ch (chan)
-                 :result-ch (go "some-result")
-                 :output-ch (chan)
-                 :exception-ch (chan)
-                 :timeout-ch (timeout 1)}]
-      (with-redefs [core/all-that-can-request (fn [_] {:hero {:from :hero, :method :get}})
-                    core/update-state (fn [_ _] nil)
-                    core/all-done? (fn [_] false)]
-        (<!! (#'restql.core.runner.core/do-run nil chans))
-        (is (every? chan-closed? (map #(% chans) [:request-ch :result-ch :output-ch])))))))
+  (testing "If an exception occurs stop and return it"
+    (let [results    (LinkedBlockingQueue.)
+          dispatched (atom 0)
+          query      [[:hero {:from :hero :method :get}]
+                      [:sidekick {:from :sidekick :method :get :with {:id [:hero :id]}}]]
+          dispatch!  (fn [_]
+                       (swap! dispatched inc)
+                       (.put results [::core/exception (Exception. "exceptional")]))
+          result     (do-run query results (far-deadline) dispatch!)]
+      (is (= "exception" (:type result)))
+      (is (= "exceptional" (:message result)))
+      (is (= 1 @dispatched))))
+
+  (testing "If the deadline is reached stop and return timeout"
+    (let [dispatched (atom 0)]
+      (is (= {:error :timeout}
+             (do-run [[:hero {:from :hero :method :get}]]
+                     (LinkedBlockingQueue.)
+                     (+ (System/currentTimeMillis) 10)
+                     (fn [_] (swap! dispatched inc)))))
+      (is (= 1 @dispatched)))))

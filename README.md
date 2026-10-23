@@ -18,13 +18,7 @@ Add restQL dependency to your project
 **Lein**
 
 ```
-[b2wdigital/restql-core "3.4.1"]
-```
-
-**NPM**
-
-```shell
-npm i @b2wdigital/restql
+[b2wdigital/restql-core "4.0.0"]
 ```
 
 ### First query
@@ -35,21 +29,23 @@ npm i @b2wdigital/restql
 (restql/execute-query :mappings { :user "http://your.api.url/users/:name" } :query "from user with name = $name" :params { :name "Duke Nukem" } )
 ```
 
-**Node**
-```js
-var restql = require('@b2wdigital/restql')
+In the example above restQL will call user API passing "Duke Nukem" in the name param.
 
-// executeQuery(mappings, query, params, options) => <Promise>
-restql
-  .executeQuery(
-    {user: "http://your.api.url/users/:name"},
-    "from user with name = $name",
-    { name: "Duke Nukem" })
-  .then(response => console.log(response))
-  .catch(error => console.log(error))
+To run a query without blocking, `execute-query-future` returns a future with the query result:
+
+```clojure
+@(restql/execute-query-future :mappings {:user "http://your.api.url/users/:name"}
+                              :encoders (restql/get-default-encoders)
+                              :query (restql.parser.core/parse-query "from user with name = $name" :context {"name" "Duke Nukem"}))
 ```
 
-In the example above restQL will call user API passing "Duke Nukem" in the name param.
+### Upgrading from 3.x
+
+Version 4.0.0 replaces core.async and aleph with Clojure futures and [clj-http](https://github.com/dakrone/clj-http):
+
+* restQL is JVM only, the NPM/Node build was removed.
+* `execute-query-channel` was replaced by `execute-query-future`, which returns a future instead of `[result-ch exception-ch]`.
+* The `:stats-conn-pool` hook was removed, and the `POOL_MAX_QUEUE_SIZE`, `POOL_CONTROL_PERIOD` and `CONNECTION_KEEP_ALIVE` settings no longer apply. `CONNECTION_KEEP_ALIVE_SECONDS` sets how long idle pooled connections are kept.
 
 ## Our query language
 The clause order matters when making restQL queries. The following is a full reference to the query syntax, available clauses and order.
