@@ -4,6 +4,7 @@
   :license {:name "MIT"
             :url "http://www.opensource.org/licenses/mit-license.php"}
   :dependencies [[org.clojure/clojure "1.10.1"]
+                 [org.clojure/core.async "0.4.500"]
                  [org.clojure/core.memoize "0.5.9"]
                  [org.clojure/tools.logging "0.5.0"]
                  [org.clojure/tools.reader "1.3.2"]
